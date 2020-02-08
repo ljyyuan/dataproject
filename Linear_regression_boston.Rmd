@@ -1,0 +1,510 @@
+---
+title: "Linear Regression on Boston Housing Price"
+author: "Jingyuan Liang, Kevin Yu, Haoni Zhan, Ida He"
+date: "11/23/2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+
+# 1. Introduction
+
+The purpose of this project is to learn the characteristics of the “Boston“ dataset and seek the relationships between different variables and the median house price in the Boston area. These variables including per capita crime rate by town, the proportion of owner-occupied units built prior to 1940, index of accessibility to radial highways and etc. For example, it is common sense that people prefer to live in a safe area so that the area with a lower crime rate usually associated with higher house prices. We also know that people tend to live in the area that closer to their workplaces or with greater accessibility to transportation and business area.  We will apply the data science techniques we learned from the STA141A to this project. We would apply the basic statistics knowledge and ggplot package we learned to explore and visualize the characteristics of our dataset. We are going to use the linear regression model to seek the relationship between different variables of the housing (crime rate, accessibility to highways, distance to business areas and etc.) and the house prices in the Boston area and to generate a best-fit linear regression model to predict the price of houses in the Boston area. 
+
+Key questions about the dataset:
+
+1.	What are the top five variables affecting the Boston housing price most? 
+2.	What is the relationship between the top five variables and the Boston housing price?
+3.	Find the linear regression model which predicts the relationship best. 
+
+
+# 2. Data description
+
+We will be using the built-in Boston housing pricing dataset in R. The dataset contains 507 data points and each data point has 14 measures. We will be considering measures from various tests that attempt to quantify the price of a house.
+
+This data contains the following variables:
+
+1. crim: per capita crime rate by town.
+2. zn: proportion of residential land zoned for lots over 25,000 sq.ft.
+3. indus: proportion of non-retail business acres per town.
+4. has: Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+5. nox: nitrogen oxides concentration (parts per 10 million).
+6. rm: average number of rooms per dwelling.
+7. age: proportion of owner-occupied units built prior to 1940.
+8. dis: weighted mean of distances to five Boston employment centres.
+9. rad: index of accessibility to radial highways.
+10. tax: full-value property-tax rate per \$10,000.
+11. ptratio: pupil-teacher ratio by town.
+12. black: 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town.
+13. lstat: lower status of the population (percent).
+14. medv: median value of owner-occupied homes in \$1000s.
+
+
+# 3. Explotary Data Analysis
+
+```{r, echo = FALSE}
+
+library(MASS)
+library(plotly)
+library(corrplot)
+library(regclass)
+library(GGally)#Implore the Data
+#head(Boston)
+attach(Boston)
+```
+
+After getting the data, the first step we do is to process the data cleaning and explortary data analysis to study the characteristics of the data. According to our results, there are no missing value. All the values are numeric. Therefore, reguar data cleaning is not required here.
+```{r, eval = FALSE}
+#See if there are missing values
+any(is.na(Boston))
+```
+
+The second step we process is to see what variables we have in our data set. From the results we can see that there are variable such as "age","black","chas","crim","dis","indus","lstat","medv","nox","ptratio","rad","rm","tax","zn". All of them are numeric variables. Additionally, the varibale "chas" is a dummy variable that indicate whether the house is tract bounds river.
+```{r}
+#See what varaibles we have in this data set
+#See the type of each data
+sapply(Boston,class)
+
+var_desp = data.frame(Variable = names(Boston), 
+           Description = c("per capita crime rate by town.", "proportion of residential land zoned for lots over 25,000 sq.ft", 
+                           "proportion of non-retail business acres per town", 
+                           "Charles River dummy variable (= 1 if tract bounds river; 0 otherwise)", 
+                           " nitrogen oxides concentration (parts per 10 million).", "average number of rooms per dwelling",
+                           "proportion of owner-occupied units built prior to 1940", 
+                           "weighted mean of distances to five Boston employment centres.", 
+                           "index of accessibility to radial highways.", 
+                           "full-value property-tax rate per $10,000.", 
+                           "pupil-teacher ratio by town", 
+                           "1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town", 
+                           " lower status of the population (percent).", 
+                           "median value of owner-occupied homes in $1000s."), 
+           Class = sapply(Boston,class))
+library(knitr)
+kable(var_desp, caption = "Variable Description")
+#See what these variables stand for
+#?Boston
+```
+
+Then we are trying to learn the basic statistics of all the variables above. The most important variable to study here is the "medv", the median value of owner-occupied home in $1000s. According to our result, the average medain value of homes in our data is 22.53, which is slightly higher than its median value 21.20. The cheapest home in our data set is 5000 dollars; the most expensive home is 50,000.
+```{r}
+#Summary the basic statistics of each variables
+summary(Boston)
+```
+
+To visualize our results for the median value of the home price, we graph a histrogram. From the result, we can see that the histrogram is a bell shape which is close to a normal distribution, but it is slightly skew to the right. Therefore, we apply the log transformation to the median value of owner-occupied homes in $1000s. It is also confirmed in the Box-Cox transformation in next Section. 
+```{r}
+#See the Characteristics of Median Value 
+#histrogram for median house value
+ggplot(data = Boston) +
+  geom_histogram(mapping = aes(x = Boston$medv),binwidth = 2,show.legend = TRUE,fill="4",alpha=0.6,color = "1") + xlab("median value of owner-occupied homes in $1000s")
+
+```
+
+
+We continue our explortary data analysis to study if there are any correlation between each variables.The outcome variable “medv" is directly correlated with “rm" (number of rooms), “ptratio"(pupil-teacher ratio by town), and “lstat"(lower status of the population). These correlations themselves and the directions of these correlations makes perfect sense. As for the negative correlation between “medv" and “ptratio" might be due to the number of public schools is higher in the towns with low “medv", and the educations in towns with high “medv" are better but fewer, according to the reality. These are the predictor variables that we need to concern with. 
+
+```{r}
+#correlation between each varaibles 
+round(cor(Boston),2)
+
+#correlation graph
+corrplot(cor(Boston),type = "upper", order = "AOE",tl.pos = "d",cl.pos = "b",tl.col = "black", mar = c(0,0,0,0))
+
+corrplot(cor(Boston), add = TRUE, type = "lower", method = "number", order = "AOE",
+         diag = FALSE, tl.pos = "n", cl.pos = "n", mar = c(0,0,0,0))
+
+```
+
+More clearly, we use scatter plot matrix to give an overview of relations among the predictors as well as between predictors and the response house price.
+
+```{r,fig.height = 10.8, fig.width = 10.8}
+ggpairs(data.frame(Boston[,-14], log_medv = log(Boston[,14]))) 
+```
+
+The scatter plot matrix shows that lots of the relations among the predictors and response are curved not linear indicating an appropriate transformation of the predictors is needed. The following two scatters could show that log-transformation could show a better linear relationship between predictors and the house price.
+
+```{r}
+#ggplot for median house value
+plot_ly(data = Boston, y = ~medv, x = ~lstat)
+```
+
+```{r}
+#ggplot for median house value
+plot_ly(data = Boston, y = ~medv, x = ~log(lstat))
+```
+
+Also, the scatters among the predictors show that some of the predictors are highly correlated such as nox and indus, thus, it indicates model selection is needed to avoid multicollineary problems. As when we are using multiple linear regression, we should pay attention to variables with high correlations and consider dropping them to fit better multiple linear regression algorithms. Therefore, we use VIF function to check each variable’s VIF. We would pay attention to variables with VIF is greater than 5, which corresponds to an R^2 of .80 with the other variables.
+
+```{r}
+
+lm1<-lm(medv~.,data=Boston)
+VIF(lm1)
+```
+We see variable “rad", “tax" and "log(crim)" have really high VIF. This might be problematic since they might contribute to multicollinearity. We might need to drop these three variables first.
+
+
+# 4. Fitting Model 
+
+## Fitting Model 
+
+In this part, we are going to try to fit the dataset into different linear models. Here, we will take MEDV as the dependent variable and other remaining variables as independent variables.
+
+##4.1 linear model 1
+
+Linear model 1 here contains all the parameters in the Boston dataset. The coefficient and the significance for each parameter are found using the commend summary().
+
+```{r}
+set.seed(1)
+library(MASS)
+attach(Boston)
+
+lm1_<-lm(medv~.,data=Boston)
+data.frame(coef = round(lm1_$coefficients,4))
+
+```
+
+The coefficients of each variables in linear model 1 are shown above
+
+```{r}
+summary(lm1_)
+```
+
+From above summary, we can see that the p-values of , "zn", "nox", "rm", "dis", "rad", "ptratio", "black", "lstat" are small enough to be used to reject the null hypothesis of beta = 0. However, the p-value of the "indus", and "age" are way larger then the regular alpha 0.05. The p-value of the variable "indus" is 0.7383, and the p-value of the variable "age" is 0.9582. Therefore, for variables "indus"and "age" we fail to reject the null hypothesis, and they are not statistically significant in this model.
+
+Furthermore, for the variables "crim", chas", and "tax", their associated p-values are 0.001087, 0.001925, and 0.001112. Those variables would be considered as less significant variables here.
+
+Also, according to the above results, the residual standard error here is 4.7450. The R-squared for this linear model is 0.7406 and the adjusted R-squared is 0.7338, which are both relatively high, indicating that there are approximately more than 70% of the observed variation can be explaind through the model's inputs.
+
+```{r}
+lm1_<-lm(medv~.,data=Boston)
+par(mfrow=c(2,2))
+plot(lm1_)
+
+```
+
+understanding the above diagnostic plots:
+First of all, we can see that the residual plot looks relatively u-shaped comparing to a straight line. This would indicate nonlinearity in the current linear model 1.
+From the qq plot, we can say that the data is approximately normally distributed, although there might be several possible outliers.
+In the scale-location plot, it is not spread equally along the the range of predictors. This might indicate that we should check the assumption of equal variance in this model.
+Lastly,the residuals vs. leverage plot shows that there's no points higher than cook's distance. So, there should be no influential points for this data.
+
+##4.2 linear model 2: data transformation through log transformation
+
+From model 1 we notice that the variable MEDV is not perfectly normally distributed and there is non-linear pattern, the spread of residuals also appear there is non-constant variance.
+
+```{r}
+library(MASS)
+par(mfrow = c(1,1))
+boxcox(lm1_)
+```
+
+Also, the boxcox transformation indicates a best transformation includes 0 which means we would consider to use log transformation to transform the variable MEDV. 
+
+
+```{r}
+lm2_ <- lm(log(medv) ~ crim+zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat, data = Boston)
+data.frame(coef = round(lm2_$coefficients,4))
+
+```
+
+The coefficients of each variables in linear model 2 are shown above
+
+```{r}
+summary(lm2_)
+```
+
+From above summary, we can see that the p-values of "crim", "nox", "rm", "dis", "rad", "tax", "ptratio", "black", "lstat" are small enough to be used to reject the null hypothesis of beta = 0. However, the p-value of the "indus", and "age" are way larger then the regular alpha 0.05. The p-value of the variable "indus" is 0.3168, and the p-value of the variable "age" is 0.6906. Therefore, for variables "indus"and "age" we fail to reject the null hypothesis, and they are not statistically significant in this model. What we can see here compared to model 1 is that the p-values for variable "indus" and "age" both decrease a little bit, although they are still large enough for supporting the null hypothesis.
+
+Furthermore, for the variables "zn" and "chas", their associated p-values are 0.0333 and 0.0036. Those variables would be considered as less significant variables here.
+
+Also, according to the above results, the residual standard error here is 0.1899, which decreases significantly (from 4.4750 to 0.1899) comparing to linear model 1. The R-squared for this linear model is 0.7896 and the adjusted R-squared is 0.7841, which are both relatively high, indicating that there are approximately more than 70% of the observed variation can be explaind through the model's inputs. Moreover, both R-squared and Adjusted R-squared increased by a small amount comparing to model 1.
+
+
+```{r}
+par(mfrow = c(2,2))
+plot(lm2_)
+```
+
+
+
+understanding the above diagnostic plots:
+Lets compare the diagnostic plots here with the plots we got in model 1. we can see that the residual plot looks relatively less u-shaped now. The model 7 would have less possibilitiy of nonlinearity than model 1. 
+
+Also, from the qq plot, we can say that the data is more normally distributed, the data here are more fitted to the 45 degree line. In the scale-location plot, it is still not spread equally along the the range of predictors. This might indicate that we still need to check the assumption of equal variance in model 7.  Also,the residuals vs. leverage plot shows that there are some  influential points needed to be deal with.
+
+To be noticing that we also tried to use a model that perform log transformation for "MEDV"(the y value), "crim", and "lstat". However, after performing this model, the R square decreased, and the diagnostic plots were not improved signicantly comparing to our model here. Therefore, we decide to continue using the model with transforming the "MEDV" only. For the further studying, we will use cross validation method to determine which method is better.
+
+#5. Diagnostics: Ouliters, high leverage points and strong influential points 
+
+In this part, we decide to remove the ouliters, high leverage points and strong influential points  in the data and then refit the model to check if a better model would be produced. The rules are:
+
+
+1) For outliers, standardized residuals |r_i| > 2
+
+2) For high leverage $h_{ii} > 2\times (p+1)/n$
+
+3) For strong influential points, cook's distance  $D_i > 4/(n - p - 1)$. 
+
+The unusual points indice detected are as below:
+
+```{r}
+n <- nrow(Boston)
+p <- length(coef(lm2_)) - 1
+ids <-unique(c(which(abs(rstandard(lm2_)) > 2),
+  which(hatvalues(lm2_) > 2 * (p+1)/n),
+  which(cooks.distance(lm2_) > 4/(n-p-1))))
+ids
+Boston[ids,]
+```
+
+Another way to detact outliers and influential points is to see the dffits: 
+```{r}
+n <- nrow(Boston)
+p <- length(coef(lm2_)) - 1
+cv <- 2*sqrt(p/n)
+cv 
+plot(dffits(lm2_), 
+     ylab = "Standardized dfFits", xlab = "Index", 
+     main = paste("Standardized DfFits, \n critical value = 2*sqrt(k/n) = +/-", round(cv,3)))
+abline(h = cv, lty = 2)
+abline(h = -cv, lty = 2)
+
+Boston[which(abs(dffits(lm2_)) > cv),]
+
+```
+
+```{r}
+lm3_ <- lm(log(medv) ~ crim+zn+indus+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat, data = Boston[-ids,])
+summary(lm3_)
+```
+
+Obviously, from the ouput of the new model, it can be seen that the adjusted R-squared is about 0.8701 which improves a lot from the model without remove unusual points. 
+
+```{r}
+par(mfrow = c(2,2))
+plot(lm3_)
+```
+
+More importantly,  the diagnostic plots show that the situation is much better, the residuals plot shows linearity, constant variance assumptions are satisfied, and the normal qq plot shows the residuals points fit the straight line well enough now, there are no obvious points far from the line at the ends, thus, the normaliy assumption is true too. The model is indeed improved a lot.
+
+##6. Model Selection
+##6.1 Backward Selection(manual)
+
+After log transformation, we will use the transformed linear regression models to see if the data fits. For the part below we are going to use backward selection method, which means we will begin with the full model containing all all predictors and all variables, and gradually remove or remodify the insignificant variables and correlated variable to increase the accuracy of the model, one at a time.
+
+From the summary of model in section 5, we can see that the p-values of "crim", "rm", "dis", "rad", "tax", "ptratio", "black", "lstat" are small enough to be used to reject the null hypothesis of beta = 0. However, the p-value of the "indus" are way larger then the regular alpha 0.05. The p-value of the variable "indus" is 0.6827. Therefore, for variables "indus", we fail to reject the null hypothesis with significant level = 0.1, and it is not statistically significant in this model. Moreover, the p value of variable "zn" is 0.0909 which will fail to reject the null hyphothesis with significant level = 0.05. Therefore, we can conclude that variable "zn" is much less significant. 
+
+Furthermore, for the variables "chas","nox",and "age", their associated p-values are 0.0064, 0.0011 and 0.0040. Those variables would be considered as less significant variables here.
+
+model1
+```{r}
+library(MASS)
+lm4<-lm(log(medv) ~ crim+zn+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat, data = Boston[-ids,])
+summary(lm4)
+```
+
+We will gradually remove these insignificant and less significant variables from our model, the first step is removing variable "indus", which is totally insignificant.
+
+Compared to the thrid model, we can see R-squared decreased a little bit from 0.8739 to 0.8738, however, adjusted r-squared here increased a liitle bit from 0.8701 to 0,8703. From this result, we can conclude that removing variable "indus" help improving the model a bit.
+
+Variable "zn" here is still much less significant with p value that is 0.0997, and "chas","nox",and "age" are still less significan. 
+model2
+```{r}
+lm5<-lm(log(medv) ~ crim+chas+nox+rm+age+dis+rad+tax+ptratio+black+lstat, data = Boston[-ids,])
+summary(lm5)
+```
+
+In the second step, We removed variable "zn" which is much less significant, and will be rejected at significant level with alpha = 1. From the summary here, we can see that R-squared decreased slightly from 0.8738 to 0.873, and adjusted r-squared here also decreased a bit from 0.8703 to 0,8698. From this result, we can conclude that removing variable "indus" will not help improving the model, but makes it worse instead.
+
+Furthermore, in model here, variable "chas" and "age" are still less significant, but the p value of variable "nox" decreased from 0.0011 to0.0008 here, which means it can reject the null hypothesis at any significant level. 
+
+model3
+```{R}
+lm6<-lm(log(medv) ~ crim+nox+rm+age+dis+rad+tax+ptratio+black+lstat, data = Boston[-ids,])
+summary(lm6)
+```
+In this model, we removed variable "chas". From removing variable "chas", we got Rsquared = 0.8707 and Adjusted R-squared= 0.8677. In this case, we can see that R-squared and Adjusted R-squared still decreased a bit compared to them in the last model. 
+
+Furthermore, in this model, variable "Age" here is still less significant.
+
+model4
+```{r}
+lm7<-lm(log(medv) ~ crim+nox+rm+dis+rad+tax+ptratio+black+lstat, data = Boston[-ids,])
+summary(lm7)
+```
+In this model, we removed variable "age" which is less significant from last model, and we got R-squared=0.868 and adjusted R-sqaured=0.8652, which are both decreased slightly.It means removing these variables making this model worse.  
+
+Through doing backward selection, we find that the model without variable "indus" has the highest adjusted r-squared, which is 0.8703. In this case, we can assume this model fit the data best.
+
+##6.2 Other Selection Method & Comparsion Summary (Forward stepwise,Backward stepwise,best subset)
+
+Now, we are trying to use forward-stepwise selection. 
+
+```{r}
+
+model_full = lm(log(medv) ~ ., data = Boston)
+model_small = lm(log(medv) ~ 1, data = Boston)
+
+# forward
+step1 = step(
+  model_small,
+  scope = list(lower = model_small, upper = model_full),
+  direction = "forward", trace = FALSE
+)
+summary(step1)
+
+```
+
+Now, we are trying to use backward-stepwise selection. 
+
+```{r}
+
+# backward
+step2 = step(
+  model_full,
+  scope = list(lower = model_small, upper = model_full),
+  direction = "backward", trace = FALSE
+)
+
+summary(step2)
+
+```
+
+We also want to try the best subset selection. 
+
+```{r}
+
+models <- regsubsets(log(medv) ~ ., data = Boston, nvmax = 14)
+summary(models)
+res.sum <- summary(models)
+data.frame(
+  Adj.R2 = which.max(res.sum$adjr2),
+  CP = which.min(res.sum$cp),
+  BIC = which.min(res.sum$bic)
+)
+
+# id: model id
+# object: regsubsets object
+# data: data used to fit regsubsets
+# outcome: outcome variable
+get_model_formula <- function(id, object, outcome){
+  # get models data
+  models <- summary(object)$which[id,-1]
+  # Get outcome variable
+  #form <- as.formula(object$call[[2]])
+  #outcome <- all.vars(form)[1]
+  # Get model predictors
+  predictors <- names(which(models == TRUE))
+  predictors <- paste(predictors, collapse = "+")
+  # Build model formula
+  as.formula(paste0(outcome, "~", predictors))
+}
+
+# best subset selection with adjusted R-square criterion
+get_model_formula(12, models, "log_medv")
+
+```
+
+The best subset model includes predictors "crim", "ptratio" and "lstat". Now, we try to fit this best model. 
+
+```{r}
+model_bestsubset = lm(log(medv) ~ crim + zn + indus + chas + nox + rm + dis + rad + 
+    tax + ptratio + black + lstat, data = Boston)
+summary(model_bestsubset)
+```
+
+Using forward selection or best subset selection, the selected models have lower adjusted R-square than the one we selected manually. 
+
+##7. Regularization models, Lasso, Ridge and Elastic Net
+
+These regularization methods work by penalizing the magnitude of the coefficients of features and at the same time minimizing the error between the predicted value and actual observed values. This minimization becomes a balance between the error (the difference between the predicted value and observed value) and the size of the coefficients. The only difference between Ridge and Lasso is the way they penalize the coefficients. Elastic Net is the combination of these two. Elastic Net adds both the sum of the squares errors and the absolute value of the squared error.
+
+First, we apply ridge method, alpha = 0, using 10-folds cross validation to tune the best lambda, the plot and the result shows the best lambda which minimize the error is about 0.0329:
+
+```{r}
+
+library(glmnet)
+set.seed(1)
+fit <- cv.glmnet(x=as.matrix(Boston[,-c(2,3,4,7,14)]),y= log(Boston[,14]),
+                 alpha = 0, nfolds = 10)
+par(mfrow = c(1,1))
+plot(fit)
+fit$lambda.min
+```
+
+The model founded by Ridge is:
+
+```{r}
+coef(fit,fit$lambda.min)
+```
+
+Then, we apply lasso method, alpha = 1, using 10-folds cross validation to tune the best lambda, the plot and the result shows the best lambda which minimize the error is about 0.0005:
+
+```{r}
+set.seed(1)
+fit <- cv.glmnet(x=as.matrix(Boston[,-c(2,3,4,7,14)]),y= log(Boston[,14]),
+                 alpha = 1, nfolds = 10)
+par(mfrow = c(1,1))
+plot(fit)
+fit$lambda.min
+```
+
+The model founded by Lasso is:
+
+```{r}
+coef(fit,fit$lambda.min)
+```
+
+At last, we use Elastic Net, alpha = 0.5, using 10-folds cross validation to tune the best lambda, the plot and the result shows the best lambda which minimize the error is about  0.0011:
+
+
+```{r}
+set.seed(1)
+fit <- cv.glmnet(x=as.matrix(Boston[,-c(2,3,4,7,14)]),y= log(Boston[,14]),
+                 alpha = 0.5, nfolds = 10)
+par(mfrow = c(1,1))
+plot(fit)
+fit$lambda.min
+```
+
+The model founded by Elastic Net is:
+
+```{r}
+coef(fit,fit$lambda.min)
+
+```
+
+
+
+# 8. Conclusion 
+
+Finally, with the best model founded, we can answer the key questions about the dataset:
+
+8.1	What are the top five variables affecting the Boston housing price most? 
+
+The top five variables affecting the Boston housing price most are rm,lstat,  ptratio,     
+dis and  black  which have smallest p values.
+
+8.2	What is the relationship between the top five variables and the Boston housing price?
+
+Fixed other factors, average number of rooms per dwelling(rm) increases 1 unit, the house price would increase 17.23%. Fixed other factors, lower status of the population (lstat) increase 1 unit,  the house price would decrease 2.12%. Fixed other factors, pupil-teacher ratio by town. (pratio) increase 1 unit,  the house price would decrease 3.19%. Fixed other factors, weighted mean of distances to five Boston employment centres (dis) increase 1 unit,  the house price would decrease 4.41%.  Fixed other factors, the proportion of blacks by town(black) increase 1 unit, the house price would decrease 0.06%. 
+
+
+8.3	Find the linear regression model which predicts the relationship best. 
+
+The model founded is:
+
+$$\hat{medv} = e^{3.193 -0.013 crim+0.001 zn+ 0.078 chas-0.387 nox+0.171 rm-0.001 age-0.045 dis+0.01 rad-0.001 tax+-0.032 ptratio+0.001 black-0.021 lstat}$$
+
+#Further Study
+Data Science is an interesting discipline that allows us to discover the world of data in creative ways. The further study of this data set for our group including:
+
+a. Further comparsions between different data transformation models via cross validation
+b. Further comparsions between model selection beyond comparing through adjusted R squares. This could including comparing the diagnositic table, AIC and etc.
